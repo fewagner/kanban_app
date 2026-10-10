@@ -221,11 +221,14 @@ npm test        # or: node tests/run.js — Node 18+, no packages to install
 ```
 
 The tests cover the file formats, the date and recurrence maths, the three-way
-merge and what the board and calendar show; they run against a fixed clock.
+merge, what the board and calendar show, and what the deploy relies on; they
+run against a fixed clock.
 `package.json` exists only to mark the modules as ES modules for Node — there
 are no dependencies. Neither it nor `tests/` is deployed.
 
 ## Release channels
 
-`main` deploys to `/kanban_app/`, `beta` to `/kanban_app/beta/`; see
+`main` deploys to `/kanban_app/`, `beta` to `/kanban_app/beta/`. Each deploy
+serves the scripts and the stylesheet from a folder named after its commit, so
+after an update a browser never mixes files of two releases. See
 [docs/RELEASING.md](docs/RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).

@@ -33,6 +33,58 @@ heads.
 5. Hotfixes: fix on `main` first, then sync beta with `git push origin main:beta`
    (mind the ordering trap above).
 
+GitHub runs the pushed branch's copy of `pages.yml`, and every run builds both
+channels. A push to a `beta` that predates a workflow change therefore
+redeploys production with the old workflow — keep beta in step with main.
+
+## Cache busting
+
+Pages serves every file with `Cache-Control: max-age=600`, and its CDN ignores
+query strings (`app.js?v=2` gets whatever it has cached for `app.js`). With
+fixed URLs, a browser could combine freshly fetched modules with cached ones of
+the previous release for up to ten minutes after a deploy. When the release
+changed what one module imports from another (0.3.0 did), the import fails and
+the page stays blank — and reloading does not help while the cached module
+counts as fresh.
+
+So every deploy gets its own URLs (`pin_assets` in `pages.yml`): the workflow
+copies the channel's `js/` and `css/` to `v/<commit>/` — the first 12
+characters of that branch's commit hash — and points the two references in
+`index.html` there:
+
+```
+<link rel="stylesheet" href="v/97093744e592/css/style.css">
+<script type="module" src="v/97093744e592/js/app.js"></script>
+```
+
+The modules import each other by relative path, so they all load from that
+folder, byte-identical to the repository. No browser and no CDN node has seen
+those URLs before, so a new release always loads in one piece. Only
+`index.html` keeps its URL; it decides which release a tab runs. Local
+development is unaffected — the repository's `index.html` loads `js/app.js` and
+`css/style.css` directly.
+
+`tests/deploy.test.js` guards what this relies on:
+
+- `index.html` loads the app as `src="js/app.js"` and `href="css/style.css"`.
+  If it does not, the workflow fails instead of deploying an unpinned page.
+- Modules import each other only by relative path, and all of them are reached
+  from `js/app.js`. A file loaded by a page-relative URL (a worker, a `fetch` of
+  a local file) would not be pinned.
+- The stylesheet refers to nothing outside `css/`. A new asset folder has to be
+  added to the `cp` in `pin_assets`.
+
+The unpinned `js/` and `css/` are deployed as well, for tabs that still hold an
+`index.html` from before pinning.
+
+One gap remains: a tab opened within ten minutes of a deploy may still use the
+previous release's cached `index.html`. That release's folder is gone, so if
+some of its files have also dropped out of the browser cache, the page stays
+blank until it is reloaded — a reload always fetches the new `index.html`.
+Keeping earlier releases' folders would close the gap, but it takes a deploy, a
+cached `index.html` and a partly expired cache at the same moment, so that has
+not seemed worth it.
+
 ## Versioning
 
 `js/version.js` holds both numbers:
@@ -132,4 +184,6 @@ Run against a real board (not only `?demo=1`):
       touching the notes: no change to save.
 - [ ] Paste from a web page and from Google Docs: lists and bold survive,
       fonts/sizes/foreign colours do not; pasted `**` and `<b>` stay text.
+- [ ] Network tab: the stylesheet and every module load from the same
+      `v/<commit>/` folder, named after the commit just pushed.
 - [ ] Console clean.

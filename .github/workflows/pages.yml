@@ -8,6 +8,13 @@
 # "Deployment branches and tags". The concurrency group cancels superseded
 # deploys instead of letting them race (the cause of sporadic
 # "Deployment failed, try again later" errors).
+#
+# Each channel loads its js/ and css/ from v/<commit>/ (pin_assets below), so
+# a deploy never reuses an asset URL that a browser or the CDN may still hold
+# from an earlier one — see "Cache busting" in docs/RELEASING.md.
+#
+# GitHub runs the pushed branch's copy of this file, and every run builds both
+# channels: keep beta's copy in step with main's.
 
 name: Deploy Pages (main + beta)
 
@@ -45,14 +52,31 @@ jobs:
 
       - name: Assemble site
         run: |
+          # pin_assets <dir> <checkout>: copy <dir>'s js/ and css/ to
+          # v/<commit>/ and point index.html there. The modules import each
+          # other by relative path, so they all load from that folder too.
+          pin_assets() {
+            v=$(git -C "$2" rev-parse --short=12 HEAD)
+            mkdir -p "$1/v/$v"
+            cp -R "$1/js" "$1/css" "$1/v/$v/"
+            V=$v perl -pi -e 's#\b(src|href)="(js|css)/#$1="v/$ENV{V}/$2/#g' "$1/index.html"
+            grep -q "src=\"v/$v/js/app.js\"" "$1/index.html" &&
+              grep -q "href=\"v/$v/css/style.css\"" "$1/index.html" || {
+              echo "::error::$1/index.html: found no src=\"js/app.js\" or href=\"css/style.css\" to pin"
+              exit 1
+            }
+          }
+
           mkdir site
           cp -R main/* site/
           rm -rf site/.github site/tests site/package.json
           touch site/.nojekyll
+          pin_assets site main
           if [ -f beta/index.html ]; then
             mkdir -p site/beta
             cp -R beta/* site/beta/
             rm -rf site/beta/.github site/beta/tests site/beta/package.json
+            pin_assets site/beta beta
           fi
 
       - uses: actions/upload-pages-artifact@v3

@@ -3,6 +3,13 @@
 All notable, user-visible changes. The app shows a one-time notice when the
 version changes; the details live here.
 
+## 0.4.1 — 2026-10-10
+
+- Fixed: right after an update the app could stay blank for up to ten minutes,
+  because the browser combined new files with cached ones of the previous
+  version — reloading did not help. Every version now loads from its own
+  addresses.
+
 ## 0.4.0 — 2026-10-10
 
 - **Formatted notes.** The notes box of a card has a formatting bar: headings,
